@@ -152,6 +152,7 @@ export default function App() {
   const [isGameLoading, setIsGameLoading] = useState(false);
   const [loadingTime, setLoadingTime] = useState(0);
   const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("All");
   const [isTabHidden, setIsTabHidden] = useState(false);
   const [showMuteNotif, setShowMuteNotif] = useState(false);
@@ -230,10 +231,18 @@ export default function App() {
     return () => clearInterval(interval);
   }, [isGameLoading]);
 
+  // Debounce search query
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
   const categories = ["All", "Action", "Arcade", "Racing", "Puzzle", "Sports", "Strategy", "Adventure", "Simulator"];
 
   const filteredGames = useMemo(() => {
-    const query = searchQuery.toLowerCase().trim();
+    const query = debouncedSearchQuery.toLowerCase().trim();
     return games.filter(game => {
       const matchesSearch = !query || 
         game.name.toLowerCase().includes(query) || 
@@ -241,7 +250,24 @@ export default function App() {
       const matchesCategory = selectedCategory === "All" || game.category === selectedCategory;
       return matchesSearch && matchesCategory;
     });
-  }, [games, searchQuery, selectedCategory]);
+  }, [games, debouncedSearchQuery, selectedCategory]);
+
+  const gridItems = useMemo(() => {
+    const items: any[] = [];
+    filteredGames.forEach((game, index) => {
+      items.push({ type: 'game', content: game, index });
+      
+      // Inject ads in the sequence
+      if ((index + 1) % 4 === 0 && index !== filteredGames.length - 1 && !debouncedSearchQuery) {
+        items.push({ 
+          type: 'ad', 
+          id: `ad-${game.id}`, 
+          index 
+        });
+      }
+    });
+    return items;
+  }, [filteredGames, debouncedSearchQuery]);
   
   // Debug check
   useEffect(() => {
@@ -406,42 +432,75 @@ export default function App() {
           </div>
         </div>
 
-        {filteredGames.length > 0 ? (
+        {gridItems.length > 0 ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 auto-rows-[250px] grid-flow-dense">
-            {filteredGames.map((game, index) => (
-              <React.Fragment key={game.id}>
-                <GameCard 
-                  game={game} 
-                  index={index} 
-                  onClick={() => handleGameSelect(game)} 
-                />
-                {/* Horizontal Banners with varying widths for visual interest */}
-                {(index + 1) % 4 === 0 && index !== filteredGames.length - 1 && !searchQuery && (
-                  <div className={`flex items-center justify-center bento-card bg-surface/30 p-4 overflow-hidden h-[150px] ${(index + 1) % 8 === 0 ? 'col-span-full' : 'sm:col-span-2'}`}>
-                     <div className="w-full h-full flex items-center justify-center">
-                        <AdSense adClient="ca-pub-8358881625500999" adSlot="XXXXXXXXXX" style={{ width: '100%', height: '100%' }} />
-                     </div>
-                  </div>
-                )}
-              </React.Fragment>
-            ))}
+            <AnimatePresence mode="popLayout">
+              {gridItems.map((item) => (
+                  <motion.div
+                  layout
+                  key={item.type === 'game' ? item.content.id : item.id}
+                  initial={{ opacity: 0, scale: 0.9, y: 20 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.9 }}
+                  transition={{ 
+                    duration: 0.3,
+                    delay: (item.index % 12) * 0.03 // Staggered entrance for first few items
+                  }}
+                  className={item.type === 'game' 
+                    ? `bento-card flex flex-col ${item.index === 0 ? 'md:col-span-2 md:row-span-2' : ''}`
+                    : `flex items-center justify-center bento-card bg-surface/30 p-4 overflow-hidden h-[250px] ${(item.index + 1) % 8 === 0 ? 'col-span-full h-[150px]' : 'sm:col-span-2'}`
+                  }
+                >
+                  {item.type === 'game' ? (
+                    <GameCard 
+                      game={item.content} 
+                      isLarge={item.index === 0} 
+                      onClick={() => handleGameSelect(item.content)} 
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center">
+                      <AdSense adClient="ca-pub-8358881625500999" adSlot="XXXXXXXXXX" style={{ width: '100%', height: '100%' }} />
+                    </div>
+                  )}
+                </motion.div>
+              ))}
+            </AnimatePresence>
           </div>
         ) : (
-          <div className="flex flex-col items-center justify-center py-20 text-center space-y-4 bento-card p-12">
-            <div className="p-6 bg-frog-main/5 rounded-full">
-              <Ghost className="w-12 h-12 text-frog-light/30" />
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="flex flex-col items-center justify-center py-24 text-center space-y-6 bento-card p-12 bg-white/5 border-dashed border-white/10"
+          >
+            <div className="relative">
+              <div className="p-8 bg-frog-main/10 rounded-full animate-pulse">
+                <Ghost className="w-16 h-16 text-frog-main" />
+              </div>
+              <div className="absolute -bottom-2 -right-2 bg-frog-dark p-2 rounded-lg border border-white/10">
+                <Search className="w-4 h-4 text-frog-main" />
+              </div>
             </div>
-            <h4 className="text-xl font-bold">No Games Matching "{searchQuery}"</h4>
-            <p className="text-frog-light mb-6 text-sm">Our frogs couldn't find what you're looking for.</p>
+            <div className="space-y-2">
+              <h4 className="text-2xl font-display font-black uppercase italic tracking-wider text-frog-main">
+                No Ribbiting Results
+              </h4>
+              <p className="text-frog-light max-w-sm mx-auto leading-relaxed">
+                We searched every corner of the pond, but couldn't find any games matching <span className="text-white font-bold">"{searchQuery}"</span>.
+              </p>
+            </div>
             {searchQuery && (
               <button 
-                onClick={() => setSearchQuery("")}
-                className="text-frog-main hover:underline font-bold uppercase text-xs tracking-widest"
+                onClick={() => {
+                  setSearchQuery("");
+                  setDebouncedSearchQuery("");
+                }}
+                className="group flex items-center gap-2 bg-frog-main text-black px-6 py-2.5 rounded-xl font-bold uppercase text-xs tracking-widest hover:shadow-[0_0_20px_rgba(163,230,53,0.4)] transition-all"
               >
+                <X className="w-4 h-4 group-hover:rotate-90 transition-transform" />
                 Clear Search
               </button>
             )}
-          </div>
+          </motion.div>
         )}
 
         <div className="mt-20 pt-10 border-t border-border/30 flex flex-col items-center w-full overflow-hidden">
@@ -661,23 +720,24 @@ export default function App() {
 
 interface GameCardProps {
   game: Game;
-  index: number;
+  isLarge: boolean;
   onClick: () => void;
-  key?: string;
 }
 
-function GameCard({ game, index, onClick }: GameCardProps) {
-  const isLarge = index === 0;
-  
+function GameCard({ game, isLarge, onClick }: GameCardProps) {
   return (
     <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: index * 0.05 }}
+      whileHover={{ 
+        scale: 1.02,
+        boxShadow: "0 0 30px rgba(34, 197, 94, 0.2)",
+        borderColor: "rgba(34, 197, 94, 0.5)"
+      }}
+      transition={{ 
+        scale: { duration: 0.2 },
+        boxShadow: { duration: 0.2 }
+      }}
       onClick={onClick}
-      className={`group relative bento-card overflow-hidden cursor-pointer hover:border-frog-main/50 transition-all duration-500 flex flex-col ${
-        isLarge ? 'md:col-span-2 md:row-span-2' : ''
-      }`}
+      className="group relative h-full w-full overflow-hidden cursor-pointer flex flex-col"
     >
       <div className={`overflow-hidden relative bg-[#1c1f26] ${isLarge ? 'flex-1' : 'aspect-[16/10]'}`}>
         <img
